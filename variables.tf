@@ -45,3 +45,27 @@ variable "instance_name" {
   type        = string
   default     = "my-ec2-instance"
 }
+
+variable "private_subnet_cidr" {
+  description = "CIDR block for the private subnet"
+  type        = string
+  default     = "10.0.2.0/24"
+}
+
+variable "private_subnet_name" {
+  description = "Name tag for the private subnet"
+  type        = string
+  default     = "my-private-subnet"
+}
+
+variable "private_subnet_az" {
+  description = "Availability zone for the private subnet"
+  type        = string
+  default     = "ap-south-1b"
+}
+
+variable "instance_name_private" {
+  description = "Name tag for the EC2 instance in the private subnet"
+  type        = string
+  default     = "my-ec2-instance-private"
+}
