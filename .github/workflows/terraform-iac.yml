@@ -43,7 +43,9 @@ jobs:
         run: |
           terraform plan -out=tfplan.binary 2> ${{ env.LAST_ERROR_FILE }}
           terraform show -json tfplan.binary > plan.json
-
+      - name: Install Infracost
+        uses: infracost/setup-infracost@v2
+        
       - name: 💰 Infracost Breakdown
         env:
           INFRACOST_API_KEY: ${{ secrets.INFRACOST_API_KEY }}
