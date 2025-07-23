@@ -1,0 +1,93 @@
+name: Terraform IaC Workflow
+
+on:
+  push:
+    branches:
+      - main
+
+env:
+  LAST_ERROR_FILE: last_error.log
+  PY_VENV: .venv
+  PY_SCRIPT_PLAN: iac_review_bedrock-plan.py
+  PY_SCRIPT_ERROR: iac_review_bedrock.py
+
+jobs:
+  terraform:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: ✅ Checkout Repository
+        uses: actions/checkout@v3
+
+      - name: ⚙️ Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.6.6
+
+      - name: 🔐 Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v3
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: 📦 Terraform Init
+        run: |
+          terraform init 2> ${{ env.LAST_ERROR_FILE }}
+
+      - name: ✅ Terraform Validate
+        run: |
+          terraform validate 2> ${{ env.LAST_ERROR_FILE }}
+
+      - name: 📄 Terraform Plan
+        run: |
+          terraform plan -out=tfplan.binary 2> ${{ env.LAST_ERROR_FILE }}
+          terraform show -json tfplan.binary > plan.json
+      - name: Install Infracost
+        uses: infracost/actions/setup@v3
+        
+      - name: 💰 Infracost Breakdown
+        env:
+          INFRACOST_API_KEY: ${{ secrets.INFRACOST_API_KEY }}
+        run: |
+          infracost breakdown --path plan.json --format json --out-file infracost_output.json
+          infracost breakdown --path plan.json --format table
+
+      - name: 🤖 Run AI Code Review Script (Success Path)
+        run: |
+          python3 -m venv ${{ env.PY_VENV }}
+          source ${{ env.PY_VENV }}/bin/activate
+          pip install --upgrade pip boto3 botocore
+          python ${{ env.PY_SCRIPT_PLAN }} "${{ github.workspace }}"
+
+      - name: 📂 Show AI Review Output
+        if: success()
+        run: |
+          echo "===== AI Review Report ====="
+          if [ -f iac_code_review_bedrock.md ]; then
+            cat iac_code_review_bedrock.md
+          else
+            echo "No AI review output found."
+          fi
+
+      - name: ⚠️ Terraform Apply Dummy
+        run: echo "This is a dummy apply. No real infrastructure will be changed."
+
+      - name: ❌ Run AI Error Analysis (Failure Path)
+        if: failure()
+        run: |
+          python3 -m venv ${{ env.PY_VENV }}
+          source ${{ env.PY_VENV }}/bin/activate
+          pip install --upgrade pip boto3 botocore
+          ERR_MSG=$(cat ${{ env.LAST_ERROR_FILE }} || echo "No error log found.")
+          python ${{ env.PY_SCRIPT_ERROR }} "${{ github.workspace }}" "$ERR_MSG"
+
+      - name: 📂 Show Error Analysis Output
+        if: failure()
+        run: |
+          echo "===== AI Error Analysis Output ====="
+          if [ -f iac_code_review_bedrock.md ]; then
+            cat iac_code_review_bedrock.md
+          else
+            echo "No AI error report generated."
+          fi
