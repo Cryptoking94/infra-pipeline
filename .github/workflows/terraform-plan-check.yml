@@ -52,3 +52,15 @@ jobs:
           message: |
             ✅ Terraform plan succeeded and passed policy checks.
             🚧 Please manually review and merge this PR to trigger Slack-based approval before deployment.
+      - name: Notify Slack about PR
+        uses: slackapi/slack-github-action@v1.24.0
+        with:
+          payload: |
+            {
+              "channel": "${{ secrets.SLACK_CHANNEL_ID }}",
+              "text": ":incoming_envelope: *New Terraform PR Created*\n\n*Repository:* ${{ github.repository }}\n*Branch:* ${{ github.head_ref }}\n*Created By:* ${{ github.actor }}\n\n<${{ github.event.pull_request.html_url }}|Click here to review and merge>",
+              "unfurl_links": false
+            }
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+            
