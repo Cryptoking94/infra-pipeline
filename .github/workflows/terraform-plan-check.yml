@@ -1,0 +1,54 @@
+name: Terraform Plan & Compliance Check
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - '**/*.tf'
+
+jobs:
+  terraform-plan:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: 1.6.2
+
+      - name: Terraform Init
+        run: terraform init
+
+      - name: Terraform Validate
+        run: terraform validate
+
+      - name: Terraform Plan
+        run: terraform plan -no-color -out=tfplan.out
+
+      - name: Policy Check - instance_type
+        run: |
+          if grep -r 'instance_type' *.tf | grep -v '"t3.micro"' ; then
+            echo "❌ ERROR: Only t3.micro allowed."
+            exit 1
+          fi
+
+      - name: Required Tags Check
+        run: |
+          REQUIRED_TAGS=("Environment" "Owner" "CostCenter")
+          for TAG in "${REQUIRED_TAGS[@]}"; do
+            grep -q "$TAG" *.tf || {
+              echo "❌ Missing required tag: $TAG"
+              exit 1
+            }
+          done
+
+      - name: Add Comment on PR
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          message: |
+            ✅ Terraform plan succeeded and passed policy checks.
+            🚧 Please manually review and merge this PR to trigger Slack-based approval before deployment.
