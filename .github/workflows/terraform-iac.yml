@@ -6,7 +6,6 @@ on:
       - main
 
 env:
-  SLACK_CHANNEL: '#iac-reports'
   LAST_ERROR_FILE: last_error.log
   PY_VENV: .venv
   PY_SCRIPT_PLAN: iac_review_bedrock-plan.py
@@ -30,13 +29,15 @@ jobs:
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          region: us-east-1
+          aws-region: us-east-1
 
       - name: 📦 Terraform Init
-        run: terraform init 2> ${{ env.LAST_ERROR_FILE }}
+        run: |
+          terraform init 2> ${{ env.LAST_ERROR_FILE }}
 
       - name: ✅ Terraform Validate
-        run: terraform validate 2> ${{ env.LAST_ERROR_FILE }}
+        run: |
+          terraform validate 2> ${{ env.LAST_ERROR_FILE }}
 
       - name: 📄 Terraform Plan
         run: |
@@ -48,44 +49,43 @@ jobs:
           INFRACOST_API_KEY: ${{ secrets.INFRACOST_API_KEY }}
         run: |
           infracost breakdown --path plan.json --format json --out-file infracost_output.json
-          infracost breakdown --path plan.json --format table > infracost_summary.txt
+          infracost breakdown --path plan.json --format table
 
-      - name: 🤖 Run AI Code Review Script (Plan Success Path)
+      - name: 🤖 Run AI Code Review Script (Success Path)
         run: |
           python3 -m venv ${{ env.PY_VENV }}
           source ${{ env.PY_VENV }}/bin/activate
           pip install --upgrade pip boto3 botocore
           python ${{ env.PY_SCRIPT_PLAN }} "${{ github.workspace }}"
 
-      - name: 📣 Send Slack Summary on Success
-        env:
-          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+      - name: 📂 Show AI Review Output
+        if: success()
         run: |
-          SUMMARY=$(head -c 3500 infracost_summary.txt)
-          REPORT=$(head -c 3500 iac_code_review_bedrock.md)
-          MESSAGE="💸 *Infracost Estimate:*\n\`\`\`${SUMMARY}\`\`\`\n\n🤖 *AI Code Review & Remediation Suggestions:*\n${REPORT}"
-          curl -X POST -H "Authorization: Bearer $SLACK_BOT_TOKEN" -H 'Content-type: application/json' \
-            --data "{\"channel\": \"${{ env.SLACK_CHANNEL }}\", \"text\": \"$MESSAGE\"}" \
-            https://slack.com/api/chat.postMessage
+          echo "===== AI Review Report ====="
+          if [ -f iac_code_review_bedrock.md ]; then
+            cat iac_code_review_bedrock.md
+          else
+            echo "No AI review output found."
+          fi
 
       - name: ⚠️ Terraform Apply Dummy
         run: echo "This is a dummy apply. No real infrastructure will be changed."
 
-      - name: ❌ Run Error Script on Failure
+      - name: ❌ Run AI Error Analysis (Failure Path)
         if: failure()
         run: |
           python3 -m venv ${{ env.PY_VENV }}
           source ${{ env.PY_VENV }}/bin/activate
           pip install --upgrade pip boto3 botocore
-          ERR_MSG=$(cat ${{ env.LAST_ERROR_FILE }})
+          ERR_MSG=$(cat ${{ env.LAST_ERROR_FILE }} || echo "No error log found.")
           python ${{ env.PY_SCRIPT_ERROR }} "${{ github.workspace }}" "$ERR_MSG"
 
-      - name: 📣 Send Slack Error Report
+      - name: 📂 Show Error Analysis Output
         if: failure()
-        env:
-          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
         run: |
-          REPORT=$(head -c 30000 iac_code_review_bedrock.md)
-          curl -X POST -H "Authorization: Bearer $SLACK_BOT_TOKEN" -H 'Content-type: application/json' \
-            --data "{\"channel\": \"${{ env.SLACK_CHANNEL }}\", \"text\": \"🤖 *AI Code Review & Remediation Suggestions:*\n\n${REPORT}\n\nSee GitHub Actions for details.\"}" \
-            https://slack.com/api/chat.postMessage
+          echo "===== AI Error Analysis Output ====="
+          if [ -f iac_code_review_bedrock.md ]; then
+            cat iac_code_review_bedrock.md
+          else
+            echo "No AI error report generated."
+          fi
