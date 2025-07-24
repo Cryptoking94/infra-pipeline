@@ -1,9 +1,9 @@
 name: Terraform Plan & Compliance Check
 
 on:
-  pull_request:
+  push:
     branches:
-      - main
+      - 'feature/**'
     paths:
       - '**/*.tf'
 
@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout code
+      - name: Checkout Code
         uses: actions/checkout@v3
 
       - name: Set up Terraform
@@ -32,7 +32,7 @@ jobs:
       - name: Policy Check - instance_type
         run: |
           if grep -r 'instance_type' *.tf | grep -v '"t3.micro"' ; then
-            echo "❌ ERROR: Only t3.micro allowed."
+            echo "❌ ERROR: Only t3.micro is allowed for EC2 instances."
             exit 1
           fi
 
@@ -46,21 +46,13 @@ jobs:
             }
           done
 
-      - name: Add Comment on PR
-        uses: marocchino/sticky-pull-request-comment@v2
-        with:
-          message: |
-            ✅ Terraform plan succeeded and passed policy checks.
-
-            🚧 Please manually review and merge this PR to trigger Slack-based approval before deployment.
-
-      - name: Notify Slack about PR
+      - name: Slack Notification - Plan Completed
         uses: slackapi/slack-github-action@v1.24.0
         with:
           payload: |
             {
               "channel": "${{ secrets.SLACK_CHANNEL_ID }}",
-              "text": ":incoming_envelope: *New Terraform PR Created*\n\n*Repository:* ${{ github.repository }}\n*Branch:* ${{ github.head_ref }}\n*Created By:* ${{ github.actor }}\n\n<${{ github.event.pull_request.html_url }}|Click here to review and merge>",
+              "text": ":white_check_mark: *Terraform Plan Completed*\n\n*Repository:* ${{ github.repository }}\n*Branch:* ${{ github.ref_name }}\n*Pushed by:* ${{ github.actor }}\n\n:bulb: Please [create a Pull Request](https://github.com/${{ github.repository }}/compare/main...${{ github.ref_name }}) to start the approval process.",
               "unfurl_links": false
             }
         env:
