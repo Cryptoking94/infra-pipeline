@@ -21,8 +21,7 @@ jobs:
             {
               "channel": "${{ secrets.SLACK_CHANNEL_ID }}",
               "text": ":warning: *Terraform deployment waiting for approval* :construction:\n\n*Repository:* ${{ github.repository }}\n*Branch:* main\n*Action:* Terraform Apply\n\n*Approver:* <@${{ secrets.SLACK_APPROVER_USER_ID }}>\n\nReact with ✅ to approve.",
-              "unfurl_links": false,
-              "unfurl_media": false
+              "unfurl_links": false
             }
         env:
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
