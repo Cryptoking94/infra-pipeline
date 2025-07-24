@@ -1,0 +1,59 @@
+name: Terraform Plan & Compliance Check
+
+on:
+  push:
+    branches:
+      - 'feature/**'
+    paths:
+      - '**/*.tf'
+
+jobs:
+  terraform-plan:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: 1.6.2
+
+      - name: Terraform Init
+        run: terraform init
+
+      - name: Terraform Validate
+        run: terraform validate
+
+      - name: Terraform Plan
+        run: terraform plan -no-color -out=tfplan.out
+
+      - name: Policy Check - instance_type
+        run: |
+          if grep -r 'instance_type' *.tf | grep -v '"t3.micro"' ; then
+            echo "❌ ERROR: Only t3.micro is allowed for EC2 instances."
+            exit 1
+          fi
+
+      - name: Required Tags Check
+        run: |
+          REQUIRED_TAGS=("Environment" "Owner" "CostCenter")
+          for TAG in "${REQUIRED_TAGS[@]}"; do
+            grep -q "$TAG" *.tf || {
+              echo "❌ Missing required tag: $TAG"
+              exit 1
+            }
+          done
+
+      - name: Slack Notification - Plan Completed
+        uses: slackapi/slack-github-action@v1.24.0
+        with:
+          payload: |
+            {
+              "channel": "${{ secrets.SLACK_CHANNEL_ID }}",
+              "text": ":white_check_mark: *Terraform Plan Completed*\n\n*Repository:* ${{ github.repository }}\n*Branch:* ${{ github.ref_name }}\n*Pushed by:* ${{ github.actor }}\n\n:bulb: Please [create a Pull Request](https://github.com/${{ github.repository }}/compare/main...${{ github.ref_name }}) to start the approval process.",
+              "unfurl_links": false
+            }
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}

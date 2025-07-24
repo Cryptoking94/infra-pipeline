@@ -1,0 +1,82 @@
+name: Terraform Apply with Slack Approval
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  wait-for-slack-approval:
+    name: Wait for Slack Approval
+    runs-on: ubuntu-latest
+    outputs:
+      approved: ${{ steps.check-approval.outputs.approved }}
+
+    steps:
+      - name: Post Slack Approval Request
+        id: slack
+        uses: slackapi/slack-github-action@v1.24.0
+        with:
+          payload: |
+            {
+              "channel": "${{ secrets.SLACK_CHANNEL_ID }}",
+              "text": ":warning: *Terraform deployment waiting for approval* :construction:\n\n*Repository:* ${{ github.repository }}\n*Branch:* main\n*Action:* Terraform Apply\n\n*Approver:* <@${{ secrets.SLACK_APPROVER_USER_ID }}>\n\nReact with ✅ to approve.",
+              "unfurl_links": false
+            }
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+
+      - name: Wait for Reaction
+        id: check-approval
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const { WebClient } = require("@slack/web-api");
+            const token = process.env.SLACK_BOT_TOKEN;
+            const web = new WebClient(token);
+            const channel = process.env.SLACK_CHANNEL_ID;
+
+            const delay = ms => new Promise(res => setTimeout(res, ms));
+            const startTime = Date.now();
+            const timeout = 10 * 60 * 1000; // 10 minutes
+
+            const messages = await web.conversations.history({ channel, limit: 1 });
+            const messageTs = messages.messages[0].ts;
+
+            let approved = false;
+            while ((Date.now() - startTime) < timeout) {
+              const reactions = await web.reactions.get({ channel, timestamp: messageTs });
+              if (reactions.message.reactions?.some(r => r.name === 'white_check_mark' || r.name === '✅')) {
+                approved = true;
+                break;
+              }
+              await delay(10000); // wait 10 seconds
+            }
+
+            if (!approved) {
+              core.setFailed("❌ Deployment not approved in time.");
+            } else {
+              core.setOutput("approved", "true");
+            }
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          SLACK_CHANNEL_ID: ${{ secrets.SLACK_CHANNEL_ID }}
+
+  apply-terraform:
+    name: Terraform Apply
+    needs: wait-for-slack-approval
+    if: needs.wait-for-slack-approval.outputs.approved == 'true'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v2
+
+      - name: Terraform Init
+        run: terraform init
+
+      - name: Terraform Apply
+        run: terraform apply -auto-approve
