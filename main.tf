@@ -1,8 +1,8 @@
 provider "aws" {
   region = "ap-south-1"
 }
-#hsh
-module "vpc" {
+
+module "vc" {
   source              = "./modules/vpc"
   vpc_cidr            = var.vpc_cidr
   vpc_name            = var.vpc_name
